@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "batch-foundation/1.0.0",
+  "capturedAt": "2026-10-24T00:00:00.000Z",
+  "network": {
+    "name": "Pharos Pacific Mainnet",
+    "chainId": 1672,
+    "chainIdHex": "0x688",
+    "rpc": "https://rpc.pharos.xyz",
+    "nativeSymbol": "PROS",
+    "latestBlockObservedByChainMcp": "21138165"
+  },
+  "chainMcpSchemas": {
+    "eth_call": "transaction plus optional block",
+    "estimate_gas": "transaction only; no block parameter",
+    "get_code": "address plus optional block"
+  },
+  "contract": {
+    "name": "Multicall3",
+    "address": "0xcA11bde05977b3631167028862bE2a173976CA11",
+    "verificationBlock": "21138166",
+    "codeBytes": 3808,
+    "codeHash": "0xd5c15df687b16f2ff992fc8d767b4216323184a2bbc6ee2f9c398c318e770891",
+    "codePrefix": "0x6080604052600436106100f35760003560e01c80634d2301cc1161008a578063",
+    "codeSuffix": "ae39a1ec2148d3e5d6f73d95e9b17910152d61f16264736f6c634300080c0033",
+    "pinnedGetChainIdCall": {
+      "tool": "Chain MCP eth_call",
+      "block": 21138166,
+      "data": "0x3408e470",
+      "rawResult": "0x0000000000000000000000000000000000000000000000000000000000000688",
+      "decoded": "1672"
+    },
+    "estimate": {
+      "tool": "Chain MCP estimate_gas",
+      "blockPinSupported": false,
+      "gas": "28722"
+    }
+  },
+  "semantics": {
+    "method": "aggregate3((address,bool,bytes)[])",
+    "innerCaller": "Multicall3 contract",
+    "strict": "allowFailure=false for every call; one failure reverts the entire batch",
+    "bestEffort": "allowFailure=true for every zero-value check; ordered success flags and return data are returned",
+    "value": "This product supports only zero-value checks. aggregate3Value and token approvals are excluded."
+  },
+  "sources": [
+    "https://docs.pharos.xyz/",
+    "https://github.com/mds1/multicall3/blob/main/src/Multicall3.sol",
+    "https://github.com/mds1/multicall3"
+  ]
+}

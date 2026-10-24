@@ -1,0 +1,15 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import worker from "../src/worker.js";
+import { multicall } from "../src/engine.js";
+
+class MemoryDB {
+  constructor(){this.rows=new Map()}
+  prepare(sql){const db=this;return{args:[],bind(...args){this.args=args;return this},async run(){if(sql.startsWith("INSERT")){const[id,digest,report,created,expires]=this.args;db.rows.set(id,{id,digest,report_json:report,created_at:created,expires_at:expires,prepared_at:null});return{meta:{changes:1}}}if(sql.startsWith("UPDATE")){const[at,id,now]=this.args,row=db.rows.get(id);if(!row||row.prepared_at||row.expires_at<now)return{meta:{changes:0}};row.prepared_at=at;return{meta:{changes:1}}}throw Error("Unexpected SQL")},async first(){return db.rows.get(this.args[0])||null}}}
+}
+const sender="0x15ddce897d76ac39c188ade4d353711a60395315";
+const request={chainId:1672,from:sender,mode:"STRICT",actions:[{type:"CHAIN_ID"},{type:"BLOCK_NUMBER"},{type:"NATIVE_BALANCE",subject:sender}]};
+const chain=multicall.encodeFunctionResult("getChainId",[1672n]),block=multicall.encodeFunctionResult("getBlockNumber",[99n]),balance=multicall.encodeFunctionResult("getEthBalance",[100n]);
+function rpcFetch(_url,options){const req=JSON.parse(options.body),method=req.method;let result;if(method==="eth_chainId")result="0x688";else if(method==="eth_blockNumber")result="0x63";else if(method==="eth_getCode")result="0x60006000";else if(method==="eth_estimateGas")result=req.params[0].data.startsWith("0x82ad56cb")?"0x9c40":"0x7530";else if(method==="eth_call"){const data=req.params[0].data;result=data.startsWith("0x82ad56cb")?multicall.encodeFunctionResult("aggregate3",[[{success:true,returnData:chain},{success:true,returnData:block},{success:true,returnData:balance}]]):data==="0x3408e470"?chain:data==="0x42cbb15c"?block:balance}else throw Error(method);return Promise.resolve(new Response(JSON.stringify({jsonrpc:"2.0",id:req.id,result}),{headers:{"content-type":"application/json"}}))}
+
+test("worker stores an exact live report and permits one unchanged unsigned export",async()=>{const original=globalThis.fetch;globalThis.fetch=rpcFetch;try{const env={RPC_URL:"https://mock",DB:new MemoryDB(),ASSETS:{fetch:()=>new Response("asset")}};const sim=await worker.fetch(new Request("https://app/api/simulate",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(request)}),env),simBody=await sim.json();assert.equal(sim.status,200);assert.equal(simBody.report.batchOutcome,"SUCCESS");const payload={simulationId:simBody.report.simulationId,request};const prepared=await worker.fetch(new Request("https://app/api/prepare",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)}),env);assert.equal(prepared.status,200);assert.equal((await prepared.json()).authorized,true);const repeat=await worker.fetch(new Request("https://app/api/prepare",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)}),env);assert.equal(repeat.status,400)}finally{globalThis.fetch=original}});
