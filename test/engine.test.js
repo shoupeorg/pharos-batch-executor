@@ -50,11 +50,11 @@ test("native balance encodes the explicit subject and never user-token authority
   assert.equal(normalized.actions[2].subject.toLowerCase(), sender.toLowerCase());
   assert.equal(normalized.actions[2].valueWei, "0");
 });
-test("strict failure marks diagnostic successes rolled back and blocks preparation", () => {
+test("strict failure does not invent execution order and blocks preparation", () => {
   const normalized = normalizeRequest(base("STRICT", [{ type: "CHAIN_ID" }, { type: "REVERT_PROBE" }, { type: "BLOCK_NUMBER" }]));
   const report = buildReport(normalized, observation(normalized, { batch: "REVERT", failed: [1] }), 1000);
   assert.equal(report.batchOutcome, "REVERT");
-  assert.deepEqual(report.actions.map((x) => x.status), ["ROLLED_BACK", "REVERT", "ROLLED_BACK"]);
+  assert.deepEqual(report.actions.map((x) => x.status), ["UNKNOWN", "REVERT", "UNKNOWN"]);
   assert.throws(() => authorizeUnsigned(report, normalized, { now: 1100 }), /did not simulate successfully/);
 });
 test("best effort decodes explicit partial failure and requires acknowledgement", () => {

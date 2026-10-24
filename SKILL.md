@@ -1,19 +1,20 @@
 ---
 name: pharos-batch-executor
-description: Prepare and review one unsigned Pharos Pacific Multicall3 transaction containing at least three zero-value read checks.
+description: Simulate and prepare one strict unsigned Pharos Pacific Multicall3 transaction containing at least three exact native transfers; zero-value read checks remain available.
 ---
 
 # Pharos Batch Executor
 
-Use this skill only for unsigned batching on Pharos Pacific Mainnet chain `1672`.
+Use only on Pharos Pacific Mainnet chain `1672` with verified Multicall3 `0xcA11bde05977b3631167028862bE2a173976CA11`.
 
-1. Collect a valid sender and at least three enabled actions from `CHAIN_ID`, `BLOCK_NUMBER`, `NATIVE_BALANCE`, or controlled `REVERT_PROBE`.
-2. Explain that inner calls originate from Multicall3 `0xcA11bde05977b3631167028862bE2a173976CA11`, not the user.
-3. Use `STRICT` when every check must succeed. Use `BEST_EFFORT` only for these zero-value checks and require explicit acknowledgement of failures.
-4. Normalize and encode with the shared engine or submit to `/api/simulate`. Never invent arbitrary calls, token authority, value forwarding or user-wallet semantics.
-5. Treat EVM reverts, RPC errors, transport failures and malformed data separately. Missing evidence is `UNKNOWN`.
-6. Show individual diagnostic estimates, combined estimate and signed comparison. Always show `N → 1` submission/signature reduction.
-7. Prepare only through the server gate for the exact unexpired simulation. Decode the transaction back to its ordered actions before delivery.
-8. Return unsigned JSON only. Never request a key, sign, broadcast, fund, approve a token or claim simulated state was committed.
+1. For `NATIVE_TRANSFERS`, collect a sender and three to twelve enabled actions with nonzero recipient and positive exact decimal `amountWei` strings.
+2. Use `STRICT` only. Encode `aggregate3Value` with empty inner calldata, `allowFailure=false`, and exact outer value equal to the inner sum.
+3. Verify chain ID, Multicall3 bytecode, sender balance and empty recipient bytecode before simulation. Explain that the public sender is not proof of ownership.
+4. Simulate every equivalent individual transfer and the exact combined transaction. Keep `eth_call` and `estimate_gas` results distinct and disclose that estimates are unpinned.
+5. Treat reverts, RPC errors, transport failures and malformed data separately. Without a trace, use `UNKNOWN` for per-action order in a reverted strict batch; only conclude that no transaction effects were committed.
+6. Show exact gas integers, signed difference/percentage and the independent `N transfers → 1 batch transaction` reduction. Never describe estimates as paid gas.
+7. Prepare only through the server gate for the exact unexpired report. Round-trip and compare full `from`, `to`, `chainId`, `value`, `data`, action order, recipients, values, flags and calldata.
+8. For `READ_CHECKS`, allow only the documented zero-value action vocabulary and genuine STRICT/BEST_EFFORT behavior. Never describe getters as transfers or claims.
+9. Return unsigned JSON only. Never request a key, sign, broadcast, fund, approve tokens or claim simulated state was committed.
 
-Reference `README.md`, `ARCHITECTURE.md`, and `evidence/foundation.json` for verified scope and semantics.
+Reference `README.md`, `ARCHITECTURE.md`, and `evidence/manifest-v1.json` for scope and evidence.

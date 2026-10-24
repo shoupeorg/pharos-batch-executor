@@ -1,4 +1,4 @@
-export const ENGINE_VERSION = "batch-executor/1.0.0";
+export const ENGINE_VERSION = "batch-executor/1.1.0-native-transfers";
 export const NETWORK = {
   name: "Pharos Pacific Mainnet",
   chainId: 1672,
@@ -12,6 +12,7 @@ export const MAX_CALLDATA_BYTES = 16_384;
 export const SIMULATION_TTL_MS = 10 * 60 * 1000;
 export const MULTICALL_ABI = [
   "function aggregate3((address target,bool allowFailure,bytes callData)[] calls) payable returns ((bool success,bytes returnData)[] returnData)",
+  "function aggregate3Value((address target,bool allowFailure,uint256 value,bytes callData)[] calls) payable returns ((bool success,bytes returnData)[] returnData)",
   "function getChainId() view returns (uint256)",
   "function getBlockNumber() view returns (uint256)",
   "function getEthBalance(address addr) view returns (uint256)",

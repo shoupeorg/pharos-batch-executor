@@ -37,36 +37,35 @@ if ($LASTEXITCODE -eq 1) {
 Write-Host '==> Publish main using the installed Git Credential Manager'
 Run-Native { git -c "safe.directory=$SafeProject" push -u origin main } 'Git push failed'
 
-Write-Host '==> Apply the existing D1 migration'
-Run-Native { npx.cmd wrangler d1 migrations apply pharos-batch-executor --remote } 'Remote D1 migration failed'
-
 Write-Host '==> Deploy the already-built Worker and assets once'
 $DeployOutput = (& npx.cmd wrangler deploy --no-bundle 2>&1 | Tee-Object -Variable DeployLines | Out-String)
 if ($LASTEXITCODE -ne 0) { throw "Deployment failed:`n$DeployOutput" }
 Write-Host $DeployOutput
 
 Write-Host '==> Verify public UI, API, evidence, simulation and server-side export gate'
-$Ui = Invoke-WebRequest -Uri "$Base/" -TimeoutSec 30
+$Ui = Invoke-WebRequest -Uri "$Base/" -UseBasicParsing -TimeoutSec 30
 if ($Ui.StatusCode -ne 200 -or $Ui.Content -notmatch 'Pharos Batch Executor') { throw 'Public UI assertion failed.' }
-$Logo = Invoke-WebRequest -Uri "$Base/pharos-logo.png" -TimeoutSec 30
+$Logo = Invoke-WebRequest -Uri "$Base/pharos-logo.png" -UseBasicParsing -TimeoutSec 30
 if ($Logo.StatusCode -ne 200 -or $Logo.Headers.'Content-Type' -notmatch 'image/png') { throw 'Logo assertion failed.' }
 $Meta = Invoke-RestMethod -Uri "$Base/api/meta" -TimeoutSec 30
-if ($Meta.engineVersion -ne 'batch-executor/1.0.0' -or $Meta.network.chainId -ne 1672) { throw 'Metadata assertion failed.' }
-foreach ($EvidenceName in @('manifest-v1.json','live-valid.json','live-strict-failure.json','live-best-effort.json')) {
-  $EvidenceResponse = Invoke-WebRequest -Uri "$Base/evidence/$EvidenceName" -TimeoutSec 30
+if ($Meta.engineVersion -ne 'batch-executor/1.1.0-native-transfers' -or $Meta.network.chainId -ne 1672) { throw 'Metadata assertion failed.' }
+foreach ($EvidenceName in @('manifest-v1.json','v1.1-live-native-success.json','v1.1-live-native-failure.json','live-valid.json','live-strict-failure.json','live-best-effort.json')) {
+  $EvidenceResponse = Invoke-WebRequest -Uri "$Base/evidence/$EvidenceName" -UseBasicParsing -TimeoutSec 30
   if ($EvidenceResponse.StatusCode -ne 200 -or $EvidenceResponse.Headers.'Content-Type' -notmatch 'application/json') {
     throw "Evidence assertion failed for $EvidenceName."
   }
 }
 
 $Request = @{
+  workflow = 'NATIVE_TRANSFERS'
   chainId = 1672
   from = '0x15ddce897d76ac39c188ade4d353711a60395315'
+  contract = '0xcA11bde05977b3631167028862bE2a173976CA11'
   mode = 'STRICT'
   actions = @(
-    @{ type = 'CHAIN_ID'; label = 'Verify Pacific chain ID'; enabled = $true },
-    @{ type = 'BLOCK_NUMBER'; label = 'Read current block number'; enabled = $true },
-    @{ type = 'NATIVE_BALANCE'; label = 'Read sender native balance'; subject = '0x15ddce897d76ac39c188ade4d353711a60395315'; enabled = $true }
+    @{ type = 'NATIVE_TRANSFER'; label = 'Transfer 1 wei to public EOA example'; recipient = '0x15ddce897d76ac39c188ade4d353711a60395315'; amountWei = '1'; enabled = $true },
+    @{ type = 'NATIVE_TRANSFER'; label = 'Transfer 1 wei to empty-code recipient'; recipient = '0x1111111111111111111111111111111111111111'; amountWei = '1'; enabled = $true },
+    @{ type = 'NATIVE_TRANSFER'; label = 'Transfer 1 wei to second empty-code recipient'; recipient = '0x2222222222222222222222222222222222222222'; amountWei = '1'; enabled = $true }
   )
 }
 $Json = $Request | ConvertTo-Json -Depth 8
@@ -76,9 +75,14 @@ if ($Simulation.report.batchOutcome -ne 'SUCCESS' -or $Simulation.report.actions
 }
 $PrepareBody = @{ simulationId = $Simulation.report.simulationId; request = $Request } | ConvertTo-Json -Depth 10
 $Prepared = Invoke-RestMethod -Uri "$Base/api/prepare" -Method Post -ContentType 'application/json' -Body $PrepareBody -TimeoutSec 30
-if (-not $Prepared.authorized -or $Prepared.unsignedTransaction.to -ne '0xcA11bde05977b3631167028862bE2a173976CA11') {
+if (-not $Prepared.authorized -or $Prepared.transaction.to -ne '0xcA11bde05977b3631167028862bE2a173976CA11' -or $Prepared.transaction.value -ne '3' -or $Prepared.transaction.chainId -ne 1672) {
   throw 'Unsigned preparation assertion failed.'
 }
+if ($Prepared.decodedBatch.Count -ne 3 -or ($Prepared.decodedBatch | Where-Object { $_.allowFailure -ne $false -or $_.valueWei -ne '1' -or $_.callData -ne '0x' }).Count -ne 0) {
+  throw 'Decoded native-transfer round-trip assertion failed.'
+}
+$Downloaded = ($Prepared | ConvertTo-Json -Depth 20) | ConvertFrom-Json
+if (-not $Downloaded.authorized -or $Downloaded.transaction.data -ne $Prepared.transaction.data) { throw 'Downloaded JSON content assertion failed.' }
 try {
   Invoke-RestMethod -Uri "$Base/api/prepare" -Method Post -ContentType 'application/json' -Body $PrepareBody -TimeoutSec 30 | Out-Null
   throw 'Repeated preparation was incorrectly accepted.'

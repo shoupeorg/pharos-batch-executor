@@ -5,6 +5,7 @@ function quantity(value, field) {
   if (typeof value !== "string" || !/^0x(?:0|[1-9a-f][0-9a-f]*)$/i.test(value)) throw new Error(`${field} returned a malformed RPC quantity.`);
   return BigInt(value).toString();
 }
+const rpcQuantity = (value) => `0x${BigInt(value ?? 0).toString(16)}`;
 function rpcFailure(error) {
   const message = String(error?.message || "RPC request failed");
   const data = typeof error?.data === "string" ? error.data : error?.data?.data;
@@ -27,9 +28,10 @@ export function createRpcAdapter(url = NETWORK.rpcUrl, fetchImpl = fetch) {
   return {
     async chainId() { const result = await raw("eth_chainId", []); return result.ok ? { ...result, chainId: Number(BigInt(result.result)) } : result; },
     async blockNumber() { const result = await raw("eth_blockNumber", []); return result.ok ? { ...result, blockNumber: quantity(result.result, "eth_blockNumber") } : result; },
-    async code(address) { const result = await raw("eth_getCode", [address, "latest"]); return result.ok ? { ...result, verified: result.result !== "0x", codeHash: result.result === "0x" ? null : keccak256(result.result), codeBytes: (result.result.length - 2) / 2 } : result; },
-    async call(transaction) { return raw("eth_call", [{ from: transaction.from, to: transaction.to, value: "0x0", data: transaction.data }, "latest"]); },
-    async estimate(transaction) { const result = await raw("eth_estimateGas", [{ from: transaction.from, to: transaction.to, value: "0x0", data: transaction.data }]); return result.ok ? { ...result, gas: quantity(result.result, "eth_estimateGas") } : result; },
+    async code(address) { const result = await raw("eth_getCode", [address, "latest"]); return result.ok ? { ...result, isEmpty: result.result === "0x", verified: result.result !== "0x", codeHash: result.result === "0x" ? null : keccak256(result.result), codeBytes: (result.result.length - 2) / 2 } : result; },
+    async balance(address) { const result = await raw("eth_getBalance", [address, "latest"]); return result.ok ? { ...result, balanceWei: quantity(result.result, "eth_getBalance") } : result; },
+    async call(transaction) { return raw("eth_call", [{ from: transaction.from, to: transaction.to, value: rpcQuantity(transaction.value), data: transaction.data }, "latest"]); },
+    async estimate(transaction) { const result = await raw("eth_estimateGas", [{ from: transaction.from, to: transaction.to, value: rpcQuantity(transaction.value), data: transaction.data }]); return result.ok ? { ...result, gas: quantity(result.result, "eth_estimateGas") } : result; },
   };
 }
 
@@ -38,11 +40,19 @@ export async function observeBatch(normalized, adapter, simulationId, now = Date
   if (!chain.ok) throw new Error(`Network verification unavailable: ${chain.error.message}`);
   if (chain.chainId !== NETWORK.chainId) throw new Error(`RPC chain ${chain.chainId} does not match ${NETWORK.chainId}.`);
   if (!code.ok || !code.verified) throw new Error("Verified Multicall3 bytecode is unavailable.");
+  const senderBalance = normalized.workflow === "NATIVE_TRANSFERS" ? await adapter.balance(normalized.from) : null;
+  if (normalized.workflow === "NATIVE_TRANSFERS" && !senderBalance.ok) throw new Error(`Sender balance verification unavailable: ${senderBalance.error.message}`);
+  if (normalized.workflow === "NATIVE_TRANSFERS" && BigInt(senderBalance.balanceWei) < BigInt(normalized.totalValueWei)) throw new Error(`Sender balance ${senderBalance.balanceWei} wei is below required outer value ${normalized.totalValueWei} wei.`);
+  const recipientChecks = normalized.workflow === "NATIVE_TRANSFERS" ? await Promise.all(normalized.actions.map(async (action) => ({ recipient: action.recipient, code: await adapter.code(action.recipient) }))) : [];
+  const unavailableRecipient = recipientChecks.find((item) => !item.code.ok);
+  if (unavailableRecipient) throw new Error(`Recipient bytecode verification unavailable for ${unavailableRecipient.recipient}.`);
+  const contractRecipient = recipientChecks.find((item) => !item.code.isEmpty);
+  if (contractRecipient) throw new Error(`Recipient ${contractRecipient.recipient} has deployed bytecode; native-transfer mode supports empty-code recipients only.`);
   const individual = await Promise.all(normalized.actions.map(async (action) => {
-    const transaction = { from: normalized.from, to: action.target, value: "0", data: action.callData };
+    const transaction = { from: normalized.from, to: action.target, value: action.valueWei, data: action.callData };
     const [call, estimate] = await Promise.all([adapter.call(transaction), adapter.estimate(transaction)]);
     return { transaction, call, estimate };
   }));
   const [call, estimate] = await Promise.all([adapter.call(normalized.transaction), adapter.estimate(normalized.transaction)]);
-  return { simulationId, observedAt: new Date(now).toISOString(), blockContext: block.ok ? { tag: "latest", blockNumber: block.blockNumber } : { tag: "latest", blockNumber: null, error: block.error }, contractVerification: { verified: true, address: BATCH_CONTRACT, codeHash: code.codeHash, codeBytes: code.codeBytes, verificationBlock: block.ok ? block.blockNumber : null }, individual, batch: { transaction: normalized.transaction, call, estimate } };
+  return { simulationId, observedAt: new Date(now).toISOString(), blockContext: block.ok ? { tag: "latest", blockNumber: block.blockNumber, estimatePinned: false } : { tag: "latest", blockNumber: null, estimatePinned: false, error: block.error }, contractVerification: { verified: true, address: BATCH_CONTRACT, codeHash: code.codeHash, codeBytes: code.codeBytes, verificationBlock: block.ok ? block.blockNumber : null }, senderBalance, recipientChecks, individual, batch: { transaction: normalized.transaction, call, estimate } };
 }

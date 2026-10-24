@@ -39,7 +39,7 @@ async function prepare(request, env) {
 
 async function route(request, env) {
   const url = new URL(request.url);
-  if (url.pathname === "/api/meta" && request.method === "GET") return json({ engineVersion: ENGINE_VERSION, network: NETWORK, batchContract: BATCH_CONTRACT, modes: ["STRICT", "BEST_EFFORT"], actionTypes: ["CHAIN_ID", "BLOCK_NUMBER", "NATIVE_BALANCE", "REVERT_PROBE"], publicMode: "unsigned preparation only", runtimeTransport: "Pharos Pacific JSON-RPC", evidenceTransport: "official Chain MCP" });
+  if (url.pathname === "/api/meta" && request.method === "GET") return json({ engineVersion: ENGINE_VERSION, network: NETWORK, batchContract: BATCH_CONTRACT, workflows: { NATIVE_TRANSFERS: { modes: ["STRICT"], actionTypes: ["NATIVE_TRANSFER"], function: "aggregate3Value" }, READ_CHECKS: { modes: ["STRICT", "BEST_EFFORT"], actionTypes: ["CHAIN_ID", "BLOCK_NUMBER", "NATIVE_BALANCE", "REVERT_PROBE"], function: "aggregate3" } }, publicMode: "unsigned preparation only", runtimeTransport: "Pharos Pacific JSON-RPC", evidenceTransport: "official Chain MCP" });
   if (url.pathname === "/api/simulate" && request.method === "POST") return simulate(request, env);
   if (url.pathname === "/api/prepare" && request.method === "POST") return prepare(request, env);
   return env.ASSETS.fetch(request);

@@ -8,7 +8,7 @@
   "d1_databases": [{ "binding": "DB", "database_name": "pharos-batch-executor", "database_id": "77847f5e-26e1-4687-8ba4-4218c2985478", "migrations_dir": "migrations" }],
   "vars": {
     "RPC_URL": "https://rpc.pharos.xyz",
-    "ENGINE_VERSION": "batch-executor/1.0.0",
+    "ENGINE_VERSION": "batch-executor/1.1.0-native-transfers",
     "CHAIN_ID": "1672",
     "BATCH_CONTRACT": "0xcA11bde05977b3631167028862bE2a173976CA11"
   },

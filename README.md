@@ -1,42 +1,61 @@
 # Pharos Batch Executor
 
-Batch Rehearsal Desk composes three or more independent zero-value checks into one actual unsigned Multicall3 transaction for Pharos Pacific Mainnet. It validates and simulates the individual checks and combined batch, decodes ordered outcomes, compares gas estimates, enforces a server-side preparation gate, and downloads one unsigned JSON transaction. It never accepts keys, signs or broadcasts.
+Batch Rehearsal Desk prepares at least three independent native transfers inside one actual unsigned Multicall3 transaction on Pharos Pacific Mainnet. It verifies sender balance and empty recipient bytecode, simulates the individual transfers and exact combined transaction, decodes every field, compares gas honestly, and enforces a server-side one-export gate. It never accepts keys, signs or broadcasts.
+
+The earlier zero-value read checks remain available as supplementary `READ_CHECKS` functionality with preserved historical evidence.
 
 ## Verified foundation
 
 - Network: Pharos Pacific Mainnet, chain ID `1672`, RPC `https://rpc.pharos.xyz`.
-- Batch contract: Multicall3 `0xcA11bde05977b3631167028862bE2a173976CA11`.
-- Chain MCP verified 3,808 bytes of deployed code at block `21138166`; runtime code hash `0xd5c15df687b16f2ff992fc8d767b4216323184a2bbc6ee2f9c398c318e770891`.
-- A pinned Chain MCP `eth_call` to `getChainId()` decoded to `1672`; unpinned `estimate_gas` returned `28722`. The inspected estimate schema has no block parameter, so estimates are explicitly unpinned.
-- Sources: [official Pharos documentation](https://docs.pharos.xyz/), [primary Multicall3 source](https://github.com/mds1/multicall3/blob/main/src/Multicall3.sol), and saved [`evidence/foundation.json`](evidence/foundation.json).
+- Contract: Multicall3 `0xcA11bde05977b3631167028862bE2a173976CA11`.
+- Chain MCP reverified 3,808 bytes of deployed code at block `21144392`; runtime code hash `0xd5c15df687b16f2ff992fc8d767b4216323184a2bbc6ee2f9c398c318e770891`.
+- The deployed runtime contains selector `0x174dea71`; a pinned empty `aggregate3Value` call succeeded at block `21144392`.
+- The [primary Multicall3 source](https://github.com/mds1/multicall3/blob/main/src/Multicall3.sol) defines `Call3Value(target, allowFailure, value, callData)`, forwards each exact value with `target.call{value: value}`, reverts a disallowed failure, and finally requires `msg.value == sum(call.value)`.
+- `eth_call` supports a block argument; the inspected Chain MCP `estimate_gas` schema does not. Estimates are explicitly unpinned.
 
-The Pharos docs establish the network. The Multicall3 primary source establishes ABI and semantics; the Chain MCP observation establishes that this exact runtime is deployed on Pacific. The project does not assume the canonical address by convention alone.
+## Supported workflows
 
-## Supported actions
+### Native transfers — primary
 
-- `CHAIN_ID`: Multicall3 `getChainId()`.
-- `BLOCK_NUMBER`: Multicall3 `getBlockNumber()`.
-- `NATIVE_BALANCE`: Multicall3 `getEthBalance(subject)` for an explicit address.
-- `REVERT_PROBE`: controlled unknown-selector call to the verified Multicall3 contract, used only to demonstrate failure handling.
+- Three to twelve enabled `NATIVE_TRANSFER` actions.
+- Exact positive decimal-string `amountWei`; integer arithmetic uses `BigInt`.
+- Valid nonzero recipients with successfully verified empty deployed bytecode. Contract recipients are rejected because fallback/receive behavior would make the transfer semantics application-specific.
+- `STRICT` only; every `allowFailure` is `false` and every inner calldata value is `0x`.
+- Exact outer `value = sum(inner values)` and ABI-valid `aggregate3Value` calldata.
+- Sender balance is a live preflight check. The public sender is an observation input and does not establish ownership or permission to spend.
 
-Every action has value `0`. Token transfers, approvals, rewards, arbitrary calls and `aggregate3Value` are deliberately excluded. A subcall originates from Multicall3, not from the user. The supported getters do not depend on `msg.sender`; this is why individual and batched estimates are meaningfully disclosed while caller semantics remain visible.
+The default example sends a simulated `1 wei` to each of three verified empty-code addresses. No funds move during `eth_call` or `estimate_gas`.
 
-## Failure modes
+### Read checks — supplementary
 
-- `STRICT`: every encoded `allowFailure` is false. One subcall failure reverts the combined call. Independently successful diagnostics are labelled `ROLLED_BACK`, never committed success.
-- `BEST_EFFORT`: every encoded `allowFailure` is true. The combined return contains ordered success flags and return/revert data. Preparation with a failed check requires an explicit acknowledgement.
+- `CHAIN_ID`, `BLOCK_NUMBER`, `NATIVE_BALANCE`, and controlled `REVERT_PROBE`.
+- Zero-value `aggregate3` with genuine `STRICT` or `BEST_EFFORT` semantics.
+- Read checks are calls, not transfers or claims. Their `N → 1` comparison is reduced submissions/calls, not a claim that ordinary reads require signatures.
 
-An `eth_call` never commits state. RPC errors, timeouts, malformed responses and missing estimates remain `UNKNOWN`; they are not relabelled as EVM reverts or zero gas.
+## Transaction and failure semantics
 
-## One unsigned transaction and optimization proof
+The exported native-transfer transaction contains `chainId`, `from`, verified `to`, exact decimal `value`, and encoded calldata. Round-trip decoding verifies action order, recipient, amount, `allowFailure=false`, empty inner calldata, and the total value.
 
-The transaction contains `chainId`, `from`, verified `to`, exact value `0`, encoded `aggregate3` calldata and a separately labelled estimate. The server decodes it back into ordered targets, calldata and `allowFailure` settings before authorization.
+If a strict combined call reverts and no trace is available, independently successful diagnostics do not prove combined execution order. Current reports use `UNKNOWN` for those actions and state only the defensible transaction-level conclusion: the reverted call committed no transfers. Original v1.0 read-check evidence remains unchanged and is historical.
 
-Gas comparison uses the same sender, zero values and comparable latest context. It reports `sum(individual estimates) − batch estimate`, including zero or negative savings. Regardless of gas, `N` individual submissions/signatures become one; for three checks the independently verifiable reduction is `3 → 1` (two fewer submissions).
+EVM reverts remain distinct from RPC errors, transport failures, malformed responses and unavailable estimates. Missing gas is `UNKNOWN`, never zero.
 
-## Preparation gate
+## Honest optimization evidence
 
-`POST /api/simulate` normalizes the server-received list, verifies live chain ID and bytecode, runs individual and combined calls/estimates, and stores the report and digest in D1 for ten minutes. `POST /api/prepare` reloads that report and rejects changed, stale, consumed, wrong-chain, missing-bytecode, failed strict, incomplete or missing-gas batches. Browser claims are not trusted. A successful simulation authorizes only one unsigned download.
+The v1.1 live example uses the same sender and three `1 wei` actions:
+
+- Individual estimates: `21000 + 21000 + 21000 = 63000` gas.
+- Combined estimate: `101286` gas.
+- Signed difference: `63000 − 101286 = -38286` gas (`-60.77%`).
+- Practical reduction: `3 independent transfers → 1 batch transaction`, two fewer submissions/signatures.
+
+Batching costs more estimated gas in this example. These are estimates, not receipts, paid gas or guaranteed realized savings.
+
+## Server-side preparation gate
+
+`POST /api/simulate` normalizes the exact request, verifies chain ID, Multicall3 bytecode, sender balance and recipient bytecode, then stores the report and canonical digest in D1 for ten minutes. `POST /api/prepare` recomputes normalization and compares the full transaction (`from`, `to`, `chainId`, `value`, `data`). It rejects changed, wrong-chain/contract, stale, historical, failed, incomplete, missing-gas, unsupported-mode and mismatched-value requests. A conditional D1 update consumes a simulation exactly once, including under concurrent preparation attempts.
+
+Editing the browser form invalidates the displayed simulation and disables preparation/download until a fresh server simulation succeeds. Duplicate simulation clicks are guarded.
 
 ## Development
 
@@ -48,21 +67,22 @@ npm run cli -- request.json
 npx wrangler dev
 ```
 
-See [ARCHITECTURE.md](ARCHITECTURE.md), [SKILL.md](SKILL.md), [STATUS.md](STATUS.md), and [SUBMISSION.md](SUBMISSION.md).
+See [ARCHITECTURE.md](ARCHITECTURE.md), [SKILL.md](SKILL.md), [STATUS.md](STATUS.md), [SUBMISSION.md](SUBMISSION.md), and [versioned evidence](evidence/manifest-v1.json).
 
 ## Reviewer workflow
 
-1. Enter the sender under **1. Editable action list** and retain at least three enabled checks.
-2. Choose `STRICT` or `BEST_EFFORT`, then click **Validate & Simulate Batch**.
-3. Review **3. Combined simulation and per-action outcomes**.
-4. Verify exact estimates and the `3 → 1` proof under **4. Gas comparison and submission reduction**.
-5. Review round-trip decoded calldata under **5. Decoded batch and unsigned transaction**.
-6. Click **Prepare Unsigned Transaction**, then **Download Unsigned Transaction**.
-7. Use **Load Valid Live Evidence**, **Load Strict Failure Evidence**, and **Load Best Effort Evidence** for versioned live records.
+1. Select **Native transfers**, retain `STRICT`, and edit the sender, three recipients and exact wei amounts.
+2. Click **Validate & Simulate Batch**.
+3. Inspect **Combined simulation and per-action outcomes**, including verified balance and recipient status.
+4. Inspect the negative or positive signed result and `3 → 1` proof under **Gas comparison and submission reduction**.
+5. Review the full transaction and decoded calls under **Decoded batch and unsigned transaction**.
+6. Click **Prepare Unsigned Transaction**, then **Download Unsigned Transaction**. Inspect the JSON; nothing is signed or sent.
+7. Use **Load Native Transfer Evidence** and **Load Native Failure Evidence** for the v1.1 Chain MCP records. The read-check buttons retain v1.0 evidence.
 
 ## Limits
 
-- Latest-state calls are not block-pinned in the public runtime; Chain MCP pinning is recorded where its schema supports it.
-- Individual diagnostics help attribute strict failures, but they are separate calls and never prove committed per-action state.
-- Gas estimates can change and are not fee guarantees.
-- One prepared unsigned transaction is not a signature, broadcast, inclusion or state change.
+- Public runtime calls latest state; Chain MCP evidence pins `eth_call` where supported, while gas estimates remain unpinned.
+- Empty bytecode does not prove a human controls an address and does not prevent future contract deployment via mechanisms such as `CREATE2`.
+- Native-transfer mode intentionally excludes contracts, best-effort value forwarding, ERC-20 approvals/transfers, arbitrary calldata and automatic broadcast.
+- No trace/state-diff tool is available, so a reverted combined call does not support claims about internal execution order.
+- One unsigned transaction is not a signature, broadcast, inclusion or state change.

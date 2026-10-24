@@ -9,6 +9,20 @@
     "verificationBlock": "21139320"
   },
   "records": {
+    "v1.1-live-native-success": {
+      "kind": "NATIVE_TRANSFERS_STRICT_SUCCESS",
+      "batchOutcome": "SUCCESS",
+      "actions": ["SUCCESS", "SUCCESS", "SUCCESS"],
+      "unsignedPrepared": true,
+      "path": "evidence/v1.1-live-native-success.json"
+    },
+    "v1.1-live-native-failure": {
+      "kind": "CONTROLLED_OUTER_VALUE_MISMATCH",
+      "batchOutcome": "REVERT",
+      "actions": ["UNKNOWN", "UNKNOWN", "UNKNOWN"],
+      "unsignedPrepared": false,
+      "path": "evidence/v1.1-live-native-failure.json"
+    },
     "live-valid": {
       "kind": "VALID_STRICT",
       "batchOutcome": "SUCCESS",
