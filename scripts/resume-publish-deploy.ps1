@@ -2,6 +2,8 @@ $ErrorActionPreference = 'Stop'
 $Project = Split-Path -Parent $PSScriptRoot
 $SafeProject = $Project.Replace('\', '/')
 $Base = 'https://pharos-batch-executor.shoupeorg.workers.dev'
+$ExpectedDatabaseName = 'pharos-batch-executor'
+$ExpectedDatabaseId = '77847f5e-26e1-4687-8ba4-4218c2985478'
 
 Set-Location -LiteralPath $Project
 
@@ -11,16 +13,18 @@ function Run-Native {
   if ($LASTEXITCODE -ne 0) { throw "$Failure (exit code $LASTEXITCODE)" }
 }
 
-Write-Host '==> Configure Cloudflare D1 only if it is not configured'
+Write-Host '==> Verify and reuse the existing Cloudflare D1 binding'
 $Wrangler = Get-Content -LiteralPath 'wrangler.jsonc' -Raw
-if ($Wrangler -match 'REPLACE_AFTER_CREATION') {
-  $CreateOutput = (& npx.cmd wrangler d1 create pharos-batch-executor 2>&1 | Out-String)
-  if ($LASTEXITCODE -ne 0) { throw "D1 creation failed:`n$CreateOutput" }
-  $Match = [regex]::Match($CreateOutput, 'database_id\s*[=:]\s*["''](?<id>[0-9a-fA-F-]{36})["'']')
-  if (-not $Match.Success) { throw "D1 was created but its database ID could not be parsed:`n$CreateOutput" }
-  $Wrangler = $Wrangler.Replace('REPLACE_AFTER_CREATION', $Match.Groups['id'].Value)
-  Set-Content -LiteralPath 'wrangler.jsonc' -Value $Wrangler -NoNewline
+if ($Wrangler -notmatch [regex]::Escape('"binding": "DB"')) {
+  throw 'The source expects a D1 binding named DB, but wrangler.jsonc does not define it.'
 }
+if ($Wrangler -notmatch [regex]::Escape('"database_name": "' + $ExpectedDatabaseName + '"')) {
+  throw "wrangler.jsonc does not target the existing D1 database $ExpectedDatabaseName."
+}
+if ($Wrangler -notmatch [regex]::Escape('"database_id": "' + $ExpectedDatabaseId + '"')) {
+  throw "wrangler.jsonc does not contain the verified existing D1 ID $ExpectedDatabaseId."
+}
+Write-Host "Reusing D1 $ExpectedDatabaseName ($ExpectedDatabaseId) with binding DB."
 
 Write-Host '==> Commit the deployment configuration and resume script'
 & git -c "safe.directory=$SafeProject" add wrangler.jsonc scripts/resume-publish-deploy.ps1 STATUS.md

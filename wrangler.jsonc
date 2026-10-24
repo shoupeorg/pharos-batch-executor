@@ -5,7 +5,7 @@
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": ["/api/*"] },
-  "d1_databases": [{ "binding": "DB", "database_name": "pharos-batch-executor", "database_id": "REPLACE_AFTER_CREATION", "migrations_dir": "migrations" }],
+  "d1_databases": [{ "binding": "DB", "database_name": "pharos-batch-executor", "database_id": "77847f5e-26e1-4687-8ba4-4218c2985478", "migrations_dir": "migrations" }],
   "vars": {
     "RPC_URL": "https://rpc.pharos.xyz",
     "ENGINE_VERSION": "batch-executor/1.0.0",

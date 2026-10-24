@@ -28,6 +28,7 @@ Updated: 2026-10-24
 - Git was initialized on `main`; local commit `e30649b4cf4b9ce341ad3749e46f25eef6d6b4a1` contains the complete implementation and evidence.
 - The public repository `shoupeorg/pharos-batch-executor` was created in the authenticated GitHub UI.
 - This restricted process cannot invoke Windows Git Credential Manager (`cannot spawn sh`) and Wrangler reports that its saved interactive session is unavailable in a non-interactive environment.
-- `scripts/resume-publish-deploy.ps1` resumes only the unfinished stages in a normal authenticated PowerShell: D1 creation/configuration, final commit and push, migration, one deployment, public workflow checks, export-gate replay rejection, and remote/local consistency.
+- `scripts/resume-publish-deploy.ps1` resumes only the unfinished stages in a normal authenticated PowerShell: existing-D1 binding verification, final commit and push, migration, one deployment, public workflow checks, export-gate replay rejection, and remote/local consistency.
+- D1 creation subsequently succeeded. The existing database `pharos-batch-executor` with ID `77847f5e-26e1-4687-8ba4-4218c2985478` is now configured under the source-required binding `DB`; the resume script never creates another database and resumes at migration.
 
 No signer, funding, signing, broadcasting, contract deployment or blockchain spending has occurred.
