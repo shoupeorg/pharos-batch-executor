@@ -1,6 +1,6 @@
 # Status
 
-Updated: 2026-10-24
+Updated: 2026-10-25
 
 ## Foundation and original release preserved
 
@@ -29,4 +29,8 @@ Updated: 2026-10-24
 
 - Full suite: `34/34` passing.
 - Production Rollup build: passing. The dependency-level `this` rewrite warning from `aes-js` remains non-fatal.
-- Remaining: English/secret scan, commit/push, one deployment, and public UI/API/download/failure/remote verification.
+- English-only and credential-pattern scans passed; versioned JSON evidence and public copies parse and match.
+- Consolidated implementation commit: `785808f95730d15212383781de14487df5d66b05`.
+- No related background process is running.
+- Remaining: push, one deployment, and public UI/API/download/failure/remote verification.
+- Current sandbox blocker: Git Credential Manager cannot persist credentials and the non-interactive process has no `/dev/tty`. Use the stage-specific `scripts/resume-publish-deploy.ps1` once in normal Windows PowerShell; it does not create D1, rerun migrations, recapture evidence, run tests, or perform blockchain operations.
