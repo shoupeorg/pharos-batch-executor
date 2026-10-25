@@ -69,11 +69,32 @@ $Request = @{
   )
 }
 $Json = $Request | ConvertTo-Json -Depth 8
+$RejectedRequest = (($Json | ConvertFrom-Json) | ConvertTo-Json -Depth 8 | ConvertFrom-Json)
+$RejectedRequest.actions[1].recipient = '0xcA11bde05977b3631167028862bE2a173976CA11'
+$Rejected = $false
+try {
+  Invoke-RestMethod -Uri "$Base/api/simulate" -Method Post -ContentType 'application/json' -Body ($RejectedRequest | ConvertTo-Json -Depth 8) -TimeoutSec 30 | Out-Null
+} catch {
+  $Rejected = [int]$_.Exception.Response.StatusCode -eq 400
+}
+if (-not $Rejected) { throw 'Contract-recipient failure path assertion failed.' }
+
 $Simulation = Invoke-RestMethod -Uri "$Base/api/simulate" -Method Post -ContentType 'application/json' -Body $Json -TimeoutSec 30
 if ($Simulation.report.batchOutcome -ne 'SUCCESS' -or $Simulation.report.actions.Count -ne 3 -or $Simulation.report.submissionReduction.reduction -ne 2) {
   throw 'Public simulation assertion failed.'
 }
 $PrepareBody = @{ simulationId = $Simulation.report.simulationId; request = $Request } | ConvertTo-Json -Depth 10
+$ChangedRequest = (($Json | ConvertFrom-Json) | ConvertTo-Json -Depth 8 | ConvertFrom-Json)
+$ChangedRequest.actions[0].amountWei = '2'
+$ChangedPrepare = @{ simulationId = $Simulation.report.simulationId; request = $ChangedRequest } | ConvertTo-Json -Depth 10
+$ChangedRejected = $false
+try {
+  Invoke-RestMethod -Uri "$Base/api/prepare" -Method Post -ContentType 'application/json' -Body $ChangedPrepare -TimeoutSec 30 | Out-Null
+} catch {
+  $ChangedRejected = [int]$_.Exception.Response.StatusCode -eq 400
+}
+if (-not $ChangedRejected) { throw 'Changed-request preparation was incorrectly accepted.' }
+
 $Prepared = Invoke-RestMethod -Uri "$Base/api/prepare" -Method Post -ContentType 'application/json' -Body $PrepareBody -TimeoutSec 30
 if (-not $Prepared.authorized -or $Prepared.transaction.to -ne '0xcA11bde05977b3631167028862bE2a173976CA11' -or $Prepared.transaction.value -ne '3' -or $Prepared.transaction.chainId -ne 1672) {
   throw 'Unsigned preparation assertion failed.'
