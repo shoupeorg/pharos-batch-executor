@@ -34,3 +34,12 @@ Updated: 2026-10-25
 - No related background process is running.
 - Remaining: push, one deployment, and public UI/API/download/failure/remote verification.
 - Current sandbox blocker: Git Credential Manager cannot persist credentials and the non-interactive process has no `/dev/tty`. Use the stage-specific `scripts/resume-publish-deploy.ps1` once in normal Windows PowerShell; it does not create D1, rerun migrations, recapture evidence, run tests, or perform blockchain operations.
+
+## Post-deployment verification correction
+
+- Deployment `e665cb06-a921-4c8f-815e-22bdaefda3ac` serves engine `batch-executor/1.1.0-native-transfers` with the intended UI and assets.
+- The original PowerShell check treated any HTTP 200 simulation report that was not immediately `SUCCESS` as a generic assertion failure. The API intentionally returns structured reports for `SUCCESS`, `REVERT`, and `UNKNOWN`; transient RPC/gas evidence can therefore produce a valid non-success report without an application defect.
+- A fresh exact public request returned HTTP `200`, `application/json; charset=utf-8`, three `SUCCESS` actions, verified preflight, gas `63000` versus `101286`, reduction `2`, and the exact 3 wei transaction.
+- Public changed-request preparation returned `400`; exact preparation returned `200` and round-tripped three strict 1 wei calls; replay returned `400`. UI, engine metadata, all six evidence files, and downloaded JSON contents passed.
+- The verification script now checks the complete documented report contract, reports detailed diagnostics, and retries at most three times only for `UNKNOWN` or unavailable-gas evidence. Deterministic reverts and all other mismatches fail immediately.
+- Full suite remains `34/34`; production build passes. No application code/assets changed after deployment, so no redeployment is required for this script-only correction.

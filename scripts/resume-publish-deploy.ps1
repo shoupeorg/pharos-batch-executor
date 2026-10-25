@@ -79,10 +79,44 @@ try {
 }
 if (-not $Rejected) { throw 'Contract-recipient failure path assertion failed.' }
 
-$Simulation = Invoke-RestMethod -Uri "$Base/api/simulate" -Method Post -ContentType 'application/json' -Body $Json -TimeoutSec 30
-if ($Simulation.report.batchOutcome -ne 'SUCCESS' -or $Simulation.report.actions.Count -ne 3 -or $Simulation.report.submissionReduction.reduction -ne 2) {
-  throw 'Public simulation assertion failed.'
+$Simulation = $null
+for ($Attempt = 1; $Attempt -le 3; $Attempt++) {
+  $Candidate = Invoke-RestMethod -Uri "$Base/api/simulate" -Method Post -ContentType 'application/json' -Body $Json -TimeoutSec 30
+  $Report = $Candidate.report
+  $Actions = @($Report.actions)
+  $Decoded = @($Report.decodedBatch)
+  $Problems = @()
+  if ($Report.engineVersion -ne 'batch-executor/1.1.0-native-transfers') { $Problems += 'engineVersion' }
+  if ($Report.workflow -ne 'NATIVE_TRANSFERS' -or $Report.mode -ne 'STRICT') { $Problems += 'workflow/mode' }
+  if ($Report.batchOutcome -ne 'SUCCESS') { $Problems += 'batchOutcome' }
+  if ($Actions.Count -ne 3 -or @($Actions | Where-Object status -ne 'SUCCESS').Count -ne 0) { $Problems += 'action outcomes' }
+  if ($Report.preflight.sufficientBalance -ne $true -or $Report.preflight.recipientsSupported -ne $true) { $Problems += 'preflight' }
+  if ($Report.gasComparison.available -ne $true -or @($Report.gasComparison.individualGas).Count -ne 3 -or $null -eq $Report.gasComparison.batchGas) { $Problems += 'gas evidence' }
+  if ($Report.submissionReduction.reduction -ne 2) { $Problems += 'submission reduction' }
+  if ($Report.unsignedTransaction.chainId -ne 1672 -or $Report.unsignedTransaction.to -ne '0xcA11bde05977b3631167028862bE2a173976CA11' -or $Report.unsignedTransaction.value -ne '3') { $Problems += 'unsigned transaction' }
+  if ($Decoded.Count -ne 3 -or @($Decoded | Where-Object { $_.allowFailure -ne $false -or $_.valueWei -ne '1' -or $_.callData -ne '0x' }).Count -ne 0) { $Problems += 'decoded round-trip' }
+  if ($Problems.Count -eq 0) { $Simulation = $Candidate; break }
+
+  $Diagnostic = [ordered]@{
+    attempt = $Attempt
+    problems = $Problems
+    simulationId = $Report.simulationId
+    engineVersion = $Report.engineVersion
+    workflow = $Report.workflow
+    mode = $Report.mode
+    batchOutcome = $Report.batchOutcome
+    actionStatuses = @($Actions | ForEach-Object status)
+    preflight = $Report.preflight
+    gasComparison = $Report.gasComparison
+    combinedCall = $Report.combinedEvidence.call
+    combinedEstimate = $Report.combinedEvidence.estimate
+  }
+  $Transient = $Report.batchOutcome -eq 'UNKNOWN' -or $Report.gasComparison.available -ne $true
+  if (-not $Transient -or $Attempt -eq 3) {
+    throw "Public simulation assertion failed: $($Diagnostic | ConvertTo-Json -Depth 8 -Compress)"
+  }
 }
+if ($null -eq $Simulation) { throw 'Public simulation verification did not produce a validated response.' }
 $PrepareBody = @{ simulationId = $Simulation.report.simulationId; request = $Request } | ConvertTo-Json -Depth 10
 $ChangedRequest = (($Json | ConvertFrom-Json) | ConvertTo-Json -Depth 8 | ConvertFrom-Json)
 $ChangedRequest.actions[0].amountWei = '2'
